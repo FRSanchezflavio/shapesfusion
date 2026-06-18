@@ -69,11 +69,16 @@ class FusionadorQGISApp:
                                  command=self.fusionar_archivos, cursor="hand2")
         btn_fusionar.pack(pady=10)
 
+    def obtener_ruta_inicial(self):
+        """Devuelve la ruta UNC por defecto o C:/ de fallback si no está accesible."""
+        ruta = r"\\ANALISIS-3\Analisis-3\MAPA DEL DELITO\MAPAS DEL DELITO POR JURISDICCIONES"
+        if os.path.exists(ruta):
+            return os.path.normpath(ruta)
+        return "C:/"
+
     def seleccionar_grupo(self, grupo):
         """Seleccionar los 5 archivos componentes de UN shapefile (.shp, .dbf, .prj, .qpj, .shx)."""
-        directorio_inicial = "Z:/MAPA DEL DELITO/MAPAS DEL DELITO POR JURISDICCIONES/"
-        if not os.path.exists(directorio_inicial):
-            directorio_inicial = "C:/"
+        directorio_inicial = self.obtener_ruta_inicial()
 
         rutas = filedialog.askopenfilenames(
             initialdir=directorio_inicial,
@@ -206,6 +211,7 @@ class FusionadorQGISApp:
 
             # Pedir carpeta de destino
             carpeta_destino = filedialog.askdirectory(
+                initialdir=self.obtener_ruta_inicial(),
                 title="Seleccionar carpeta donde guardar el shapefile fusionado"
             )
             if not carpeta_destino:
