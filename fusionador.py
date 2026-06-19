@@ -10,64 +10,98 @@ class FusionadorQGISApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Fusión de Mapas del Delito - QGIS Essen")
-        self.root.geometry("750x500")
+        self.root.geometry("800x600")
         self.root.configure(bg="#2b2b2b")
 
-        # Almacenar archivos de cada grupo
-        # Estructura: { ".shp": ruta, ".dbf": ruta, ".prj": ruta, ".qpj": ruta, ".shx": ruta }
-        self.grupo_a = {}
-        self.grupo_b = {}
-        self.nombre_base_a = ""
-        self.nombre_base_b = ""
+        # Almacenar lista de grupos cargados
+        # Cada elemento: { "nombre_base": str, "archivos": { ".shp": path, ".dbf": path, ... } }
+        self.grupos = []
 
         # Título
-        titulo = tk.Label(root, text="Fusionar Shapefiles (5 + 5 → 5)",
+        titulo = tk.Label(root, text="Fusionar Múltiples Shapefiles (Grupos de 5 archivos)",
                           font=("Arial", 14, "bold"), bg="#2b2b2b", fg="white")
-        titulo.pack(pady=10)
+        titulo.pack(pady=(15, 5))
 
         subtitulo = tk.Label(root,
-                             text="Seleccioná los 5 archivos (.shp, .dbf, .prj, .qpj, .shx) de cada shapefile",
+                             text="Agregá grupos de 5 archivos (.shp, .dbf, .prj, .qpj, .shx) para fusionarlos",
                              font=("Arial", 9), bg="#2b2b2b", fg="#888888")
-        subtitulo.pack()
+        subtitulo.pack(pady=(0, 15))
 
-        # --- GRUPO A ---
-        lbl_a = tk.Label(root, text="Grupo A — Primer shapefile (5 archivos)",
-                         font=("Arial", 10), bg="#2b2b2b", fg="#2196F3")
-        lbl_a.pack(anchor="w", padx=20, pady=(10, 0))
+        # --- CONTENEDOR PRINCIPAL ---
+        main_frame = tk.Frame(root, bg="#2b2b2b")
+        main_frame.pack(fill="both", expand=True, padx=20)
 
-        btn_grupo_a = tk.Button(root, text="SELECCIONAR GRUPO A (5 archivos)",
-                                bg="#2196F3", fg="white", font=("Arial", 10, "bold"),
-                                command=lambda: self.seleccionar_grupo("A"), cursor="hand2")
-        btn_grupo_a.pack(pady=5)
+        # Columna Izquierda: Lista de grupos
+        frame_izq = tk.Frame(main_frame, bg="#2b2b2b")
+        frame_izq.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
-        self.lista_a = tk.Listbox(root, height=5, font=("Consolas", 9),
-                                  bg="#1e1e1e", fg="#00ff88", selectbackground="#3a3a3a")
-        self.lista_a.pack(fill="x", padx=20, pady=(0, 5))
+        lbl_grupos = tk.Label(frame_izq, text="Grupos cargados para fusionar:",
+                              font=("Arial", 10, "bold"), bg="#2b2b2b", fg="#2196F3")
+        lbl_grupos.pack(anchor="w", pady=(0, 5))
 
-        # --- GRUPO B ---
-        lbl_b = tk.Label(root, text="Grupo B — Segundo shapefile (5 archivos)",
-                         font=("Arial", 10), bg="#2b2b2b", fg="#FF9800")
-        lbl_b.pack(anchor="w", padx=20, pady=(5, 0))
+        # Listbox de grupos con scrollbar
+        frame_listbox = tk.Frame(frame_izq, bg="#2b2b2b")
+        frame_listbox.pack(fill="both", expand=True)
 
-        btn_grupo_b = tk.Button(root, text="SELECCIONAR GRUPO B (5 archivos)",
-                                bg="#FF9800", fg="white", font=("Arial", 10, "bold"),
-                                command=lambda: self.seleccionar_grupo("B"), cursor="hand2")
-        btn_grupo_b.pack(pady=5)
+        self.listbox_grupos = tk.Listbox(frame_listbox, height=8, font=("Arial", 10),
+                                         bg="#1e1e1e", fg="#00ff88", selectbackground="#3a3a3a")
+        self.listbox_grupos.pack(side="left", fill="both", expand=True)
 
-        self.lista_b = tk.Listbox(root, height=5, font=("Consolas", 9),
-                                  bg="#1e1e1e", fg="#ffcc00", selectbackground="#3a3a3a")
-        self.lista_b.pack(fill="x", padx=20, pady=(0, 5))
+        scroll_grupos = tk.Scrollbar(frame_listbox, orient="vertical", command=self.listbox_grupos.yview)
+        scroll_grupos.pack(side="right", fill="y")
+        self.listbox_grupos.config(yscrollcommand=scroll_grupos.set)
 
-        # --- Estado ---
-        self.lbl_estado = tk.Label(root, text="Seleccioná ambos grupos para fusionar",
+        # Bind del evento de selección
+        self.listbox_grupos.bind("<<ListboxSelect>>", self.on_grupo_seleccionado)
+
+        # Columna Derecha: Botones de gestión
+        frame_der = tk.Frame(main_frame, bg="#2b2b2b")
+        frame_der.pack(side="right", fill="y", padx=(10, 0))
+
+        lbl_acciones = tk.Label(frame_der, text="Acciones:",
+                                font=("Arial", 10, "bold"), bg="#2b2b2b", fg="white")
+        lbl_acciones.pack(anchor="w", pady=(0, 5))
+
+        btn_agregar = tk.Button(frame_der, text="AGREGAR GRUPO (+)",
+                                 bg="#2196F3", fg="white", font=("Arial", 10, "bold"), width=22,
+                                 command=self.agregar_grupo, cursor="hand2")
+        btn_agregar.pack(pady=5)
+
+        btn_quitar = tk.Button(frame_der, text="QUITAR SELECCIONADO (-)",
+                               bg="#FF9800", fg="white", font=("Arial", 10, "bold"), width=22,
+                               command=self.quitar_grupo, cursor="hand2")
+        btn_quitar.pack(pady=5)
+
+        btn_limpiar = tk.Button(frame_der, text="LIMPIAR TODOS",
+                                bg="#d32f2f", fg="white", font=("Arial", 10, "bold"), width=22,
+                                command=self.limpiar_grupos, cursor="hand2")
+        btn_limpiar.pack(pady=5)
+
+        # --- DETALLES DEL GRUPO SELECCIONADO ---
+        frame_detalles = tk.Frame(root, bg="#2b2b2b")
+        frame_detalles.pack(fill="x", padx=20, pady=15)
+
+        lbl_detalles = tk.Label(frame_detalles, text="Componentes del grupo seleccionado:",
+                                font=("Arial", 10, "bold"), bg="#2b2b2b", fg="#ffcc00")
+        lbl_detalles.pack(anchor="w", pady=(0, 5))
+
+        self.listbox_detalles = tk.Listbox(frame_detalles, height=5, font=("Consolas", 9),
+                                           bg="#1e1e1e", fg="#ffcc00", selectbackground="#1e1e1e",
+                                           highlightthickness=0)
+        self.listbox_detalles.pack(fill="x")
+
+        # --- SECCIÓN INFERIOR: ESTADO Y FUSIONAR ---
+        frame_inferior = tk.Frame(root, bg="#2b2b2b")
+        frame_inferior.pack(fill="x", side="bottom", padx=20, pady=(0, 20))
+
+        self.lbl_estado = tk.Label(frame_inferior, text="Agregá al menos 2 grupos para fusionar",
                                    font=("Arial", 10), bg="#2b2b2b", fg="#aaaaaa")
         self.lbl_estado.pack(pady=5)
 
-        # --- Botón FUSIONAR ---
-        btn_fusionar = tk.Button(root, text="FUSIONAR (A + B → 5 archivos nuevos)",
-                                 bg="#4CAF50", fg="white", font=("Arial", 12, "bold"),
-                                 command=self.fusionar_archivos, cursor="hand2")
-        btn_fusionar.pack(pady=10)
+        self.btn_fusionar = tk.Button(frame_inferior, text="FUSIONAR (0 grupos → 5 archivos nuevos)",
+                                      bg="#4CAF50", fg="white", font=("Arial", 12, "bold"),
+                                      command=self.fusionar_archivos, cursor="hand2")
+        self.btn_fusionar.pack(pady=10)
 
     def obtener_ruta_inicial(self):
         """Devuelve la ruta UNC por defecto o C:/ de fallback si no está accesible."""
@@ -76,13 +110,13 @@ class FusionadorQGISApp:
             return os.path.normpath(ruta)
         return "C:/"
 
-    def seleccionar_grupo(self, grupo):
-        """Seleccionar los 5 archivos componentes de UN shapefile (.shp, .dbf, .prj, .qpj, .shx)."""
+    def agregar_grupo(self):
+        """Selecciona y agrega un grupo de 5 archivos componentes de un shapefile."""
         directorio_inicial = self.obtener_ruta_inicial()
 
         rutas = filedialog.askopenfilenames(
             initialdir=directorio_inicial,
-            title=f"Seleccionar los 5 archivos del Grupo {grupo} (.shp, .dbf, .prj, .qpj, .shx)",
+            title="Seleccionar los 5 archivos del Grupo (.shp, .dbf, .prj, .qpj, .shx)",
             filetypes=(("Archivos Shapefile", "*.shp *.dbf *.prj *.qpj *.shx"),
                         ("Todos los archivos", "*.*"))
         )
@@ -90,7 +124,7 @@ class FusionadorQGISApp:
         if not rutas:
             return
 
-        # Normalizar rutas (corrige problemas con rutas de red UNC)
+        # Normalizar rutas
         rutas = [os.path.normpath(r) for r in rutas]
 
         if len(rutas) != 5:
@@ -131,46 +165,88 @@ class FusionadorQGISApp:
             )
             return
 
-        # Guardar y mostrar
-        if grupo == "A":
-            self.grupo_a = archivos
-            self.nombre_base_a = nombre_base
-            self._mostrar_archivos_en_lista(self.lista_a, nombre_base, archivos)
-        else:
-            self.grupo_b = archivos
-            self.nombre_base_b = nombre_base
-            self._mostrar_archivos_en_lista(self.lista_b, nombre_base, archivos)
+        # Guardar en la lista de grupos
+        self.grupos.append({
+            "nombre_base": nombre_base,
+            "archivos": archivos
+        })
 
-        # Actualizar estado
-        exts = ", ".join(sorted(archivos.keys()))
-        if self.grupo_a and self.grupo_b:
-            self.lbl_estado.config(
-                text=f"✔ Ambos grupos listos. Podés fusionar.",
-                fg="#00ff88")
-        elif grupo == "A":
-            self.lbl_estado.config(
-                text=f"Grupo A listo: {nombre_base} [{exts}]. Falta Grupo B.",
-                fg="#FF9800")
-        else:
-            self.lbl_estado.config(
-                text=f"Grupo B listo: {nombre_base} [{exts}]. Falta Grupo A.",
-                fg="#2196F3")
+        # Actualizar listbox
+        self.actualizar_interfaz_grupos()
+        
+        # Seleccionar el último agregado
+        self.listbox_grupos.selection_clear(0, tk.END)
+        self.listbox_grupos.selection_set(tk.END)
+        self.listbox_grupos.see(tk.END)
+        self.on_grupo_seleccionado()
 
-    def _mostrar_archivos_en_lista(self, listbox, nombre_base, archivos):
-        """Muestra los 5 archivos componentes en el listbox."""
-        listbox.delete(0, tk.END)
-        for i, (ext, ruta) in enumerate(sorted(archivos.items())):
-            nombre_archivo = os.path.basename(ruta)
-            listbox.insert(tk.END, f"  {i+1}. {nombre_archivo}")
+    def on_grupo_seleccionado(self, event=None):
+        """Se activa al seleccionar un grupo de la lista principal."""
+        seleccion = self.listbox_grupos.curselection()
+        self.listbox_detalles.delete(0, tk.END)
+        
+        if not seleccion:
+            return
+            
+        indice = seleccion[0]
+        if 0 <= indice < len(self.grupos):
+            grupo = self.grupos[indice]
+            archivos = grupo["archivos"]
+            for i, (ext, ruta) in enumerate(sorted(archivos.items())):
+                nombre_archivo = os.path.basename(ruta)
+                self.listbox_detalles.insert(tk.END, f"  {i+1}. {nombre_archivo}")
+
+    def quitar_grupo(self):
+        """Quita el grupo actualmente seleccionado."""
+        seleccion = self.listbox_grupos.curselection()
+        if not seleccion:
+            messagebox.showwarning("Sin selección", "Por favor, selecciona un grupo para quitar.")
+            return
+            
+        indice = seleccion[0]
+        if 0 <= indice < len(self.grupos):
+            del self.grupos[indice]
+            self.actualizar_interfaz_grupos()
+            self.listbox_detalles.delete(0, tk.END)
+            
+            # Seleccionar el elemento anterior o posterior si existe
+            if len(self.grupos) > 0:
+                nuevo_indice = min(indice, len(self.grupos) - 1)
+                self.listbox_grupos.selection_set(nuevo_indice)
+                self.on_grupo_seleccionado()
+
+    def limpiar_grupos(self):
+        """Elimina todos los grupos agregados."""
+        if not self.grupos:
+            return
+        if messagebox.askyesno("Confirmar", "¿Estás seguro de que deseas eliminar todos los grupos agregados?"):
+            self.grupos.clear()
+            self.actualizar_interfaz_grupos()
+            self.listbox_detalles.delete(0, tk.END)
+
+    def actualizar_interfaz_grupos(self):
+        """Actualiza el listbox de grupos, la etiqueta de estado y el texto del botón de fusionar."""
+        self.listbox_grupos.delete(0, tk.END)
+        for i, g in enumerate(self.grupos):
+            self.listbox_grupos.insert(tk.END, f"  {i+1}. {g['nombre_base']} ({len(g['archivos'])} archivos)")
+            
+        cant = len(self.grupos)
+        self.btn_fusionar.config(text=f"FUSIONAR ({cant} grupos → 5 archivos nuevos)")
+        
+        if cant >= 2:
+            self.lbl_estado.config(text=f"✔ {cant} grupos listos. Podés fusionar.", fg="#00ff88")
+        else:
+            self.lbl_estado.config(text=f"Agregá al menos 2 grupos para fusionar. Cargados: {cant}", fg="#aaaaaa")
 
     def fusionar_archivos(self):
-        """Fusiona dos shapefiles (A + B) generando 5 archivos nuevos.
+        """Fusiona todos los shapefiles agregados generando 5 archivos nuevos en la carpeta de destino.
         Los archivos originales NO se modifican."""
 
-        if not self.grupo_a or not self.grupo_b:
+        cant = len(self.grupos)
+        if cant < 2:
             messagebox.showwarning(
                 "Faltan archivos",
-                "Debes seleccionar los 5 archivos de cada grupo antes de fusionar."
+                f"Debes seleccionar al menos 2 grupos antes de fusionar. Actualmente hay {cant}."
             )
             return
 
@@ -178,36 +254,47 @@ class FusionadorQGISApp:
             # Eliminar la variable de entorno SHAPE_ENCODING para evitar conflictos con Fiona/GDAL
             os.environ.pop('SHAPE_ENCODING', None)
 
-            # Leer ambos shapefiles con el motor Fiona y codificación explícita (solo lectura)
-            gdf_a = gpd.read_file(self.grupo_a[".shp"], engine="fiona", encoding="iso-8859-1")
-            gdf_b = gpd.read_file(self.grupo_b[".shp"], engine="fiona", encoding="iso-8859-1")
+            # Leer todos los shapefiles con el motor Fiona y codificación iso-8859-1
+            gdfs = []
+            for g in self.grupos:
+                path_shp = g["archivos"][".shp"]
+                gdf = gpd.read_file(path_shp, engine="fiona", encoding="iso-8859-1")
+                gdfs.append((g["nombre_base"], gdf))
 
-            # Verificar CRS
-            if gdf_a.crs != gdf_b.crs:
-                messagebox.showerror(
-                    "Error de CRS",
-                    f"Los shapefiles tienen sistemas de coordenadas diferentes.\n\n"
-                    f"Grupo A ({self.nombre_base_a}): {gdf_a.crs}\n"
-                    f"Grupo B ({self.nombre_base_b}): {gdf_b.crs}\n\n"
-                    "Ambos deben tener el mismo CRS."
-                )
-                return
+            # Tomar el primer GeoDataFrame como referencia para CRS y columnas
+            primer_nombre, primer_gdf = gdfs[0]
+            ref_crs = primer_gdf.crs
 
-            # Fusionar usando solo las columnas del Grupo A (evita conflictos de campos)
-            columnas_a = [c for c in gdf_a.columns if c != "geometry"]
+            # Verificar que todos tengan el mismo CRS
+            for nombre, gdf in gdfs[1:]:
+                if gdf.crs != ref_crs:
+                    messagebox.showerror(
+                        "Error de CRS",
+                        f"Los shapefiles tienen sistemas de coordenadas diferentes.\n\n"
+                        f"Referencia ({primer_nombre}): {ref_crs}\n"
+                        f"Grupo ({nombre}): {gdf.crs}\n\n"
+                        "Todos deben tener el mismo CRS."
+                    )
+                    return
 
-            # Agregar columnas faltantes al Grupo B (rellenar con vacío)
-            for col in columnas_a:
-                if col not in gdf_b.columns:
-                    gdf_b[col] = ""
+            # Columnas del primer shapefile (Grupo de referencia)
+            columnas_base = [c for c in primer_gdf.columns if c != "geometry"]
 
-            # Quedarse solo con las columnas de A + geometry
-            gdf_b_ajustado = gdf_b[columnas_a + ["geometry"]]
+            # Ajustar columnas de todos los dataframes
+            gdfs_ajustados = []
+            for nombre, gdf in gdfs:
+                # Agregar columnas faltantes rellenando con vacío
+                for col in columnas_base:
+                    if col not in gdf.columns:
+                        gdf[col] = ""
+                # Mantener solo las columnas de la referencia + geometry en el orden exacto
+                gdfs_ajustados.append(gdf[columnas_base + ["geometry"]])
 
+            # Concatenar todos los GeoDataFrames
             fusionado = gpd.GeoDataFrame(
-                pd.concat([gdf_a[columnas_a + ["geometry"]], gdf_b_ajustado], ignore_index=True)
+                pd.concat(gdfs_ajustados, ignore_index=True)
             )
-            fusionado.set_crs(gdf_a.crs, inplace=True)
+            fusionado.set_crs(ref_crs, inplace=True)
 
             # Pedir carpeta de destino
             carpeta_destino = filedialog.askdirectory(
@@ -221,7 +308,7 @@ class FusionadorQGISApp:
             nombre_salida = "INFORME"
             ruta_salida_shp = os.path.join(carpeta_destino, nombre_salida + ".shp")
 
-            # Eliminar archivos de salida previos si existen (evita conflictos)
+            # Eliminar archivos de salida previos si existen
             for ext in [".shp", ".dbf", ".shx", ".prj", ".cpg", ".qpj"]:
                 archivo_previo = os.path.join(carpeta_destino, nombre_salida + ext)
                 if os.path.exists(archivo_previo):
@@ -229,13 +316,12 @@ class FusionadorQGISApp:
 
             # Escribir usando fiona directamente con schema explícito
             import fiona
-            from fiona.crs import CRS as FionaCRS
 
-            # Detectar tipo de geometría
-            tipo_geom = gdf_a.geometry.geom_type.iloc[0]
+            # Detectar tipo de geometría del primer shapefile
+            tipo_geom = primer_gdf.geometry.geom_type.iloc[0]
 
             # Construir schema: todas las propiedades como str para evitar errores
-            propiedades = {col: "str:254" for col in columnas_a}
+            propiedades = {col: "str:254" for col in columnas_base}
             schema = {
                 "geometry": tipo_geom,
                 "properties": propiedades
@@ -248,7 +334,7 @@ class FusionadorQGISApp:
                             encoding="iso-8859-1") as dst:
                 for _, row in fusionado.iterrows():
                     props = {}
-                    for col in columnas_a:
+                    for col in columnas_base:
                         val = row[col]
                         if pd.isna(val) or val is None:
                             props[col] = ""
@@ -261,9 +347,10 @@ class FusionadorQGISApp:
                     }
                     dst.write(feature)
 
-            # Copiar archivos adicionales que fiona no genera (ej: .qpj)
+            # Copiar archivos adicionales del primer grupo (ej: .qpj) que fiona no genera
             extensiones_generadas = {".shp", ".dbf", ".shx", ".prj", ".cpg"}
-            for ext, ruta_original in self.grupo_a.items():
+            primer_grupo_archivos = self.grupos[0]["archivos"]
+            for ext, ruta_original in primer_grupo_archivos.items():
                 if ext not in extensiones_generadas:
                     ruta_destino = os.path.join(carpeta_destino, nombre_salida + ext)
                     shutil.copy2(ruta_original, ruta_destino)
